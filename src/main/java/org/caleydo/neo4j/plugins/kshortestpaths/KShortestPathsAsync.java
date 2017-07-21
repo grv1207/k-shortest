@@ -1,40 +1,30 @@
 package org.caleydo.neo4j.plugins.kshortestpaths;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.StreamingOutput;
-
+import com.google.gson.Gson;
+import com.google.gson.stream.JsonWriter;
 import org.apache.commons.lang.StringUtils;
 import org.caleydo.neo4j.plugins.kshortestpaths.constraints.IConstraint;
 import org.caleydo.neo4j.plugins.kshortestpaths.constraints.IPathConstraint;
 import org.caleydo.neo4j.plugins.kshortestpaths.constraints.PathConstraints;
 import org.neo4j.graphalgo.CostEvaluator;
 import org.neo4j.graphalgo.WeightedPath;
-import org.neo4j.graphdb.Direction;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.*;
 import org.neo4j.helpers.collection.Iterables;
 import org.neo4j.helpers.collection.Pair;
 
-import com.google.gson.Gson;
-import com.google.gson.stream.JsonWriter;
+import javax.ws.rs.*;
+import javax.ws.rs.Path;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.util.*;
+import java.util.function.Function;
+
+import static org.caleydo.neo4j.plugins.kshortestpaths.KShortestPaths.getPathAsMap;
 
 @Path("/kShortestPaths")
 public class KShortestPathsAsync {
@@ -90,7 +80,7 @@ public class KShortestPathsAsync {
 						public void onPathReady(WeightedPath path) {
 							// System.out.println(path);
 							// System.out.println(path.relationships());
-							Map<String, Object> repr = KShortestPaths.getPathAsMap(path);
+							Map<String, Object> repr = getPathAsMap(path);
 							try {
 								gson.toJson(repr, Map.class, writer);
 								writer.flush();
@@ -187,15 +177,30 @@ public class KShortestPathsAsync {
 												// only
 			runShortestPath = true;
 		}
+		List<Map<String, Object>> pathList = new ArrayList<Map<String, Object>>(k);
+
+
+		List<org.neo4j.graphdb.Path> paths;
+
 		if (runShortestPath) {
 			KShortestPathsAlgo2 algo = new KShortestPathsAlgo2(expander, expander, debug);
-			algo.run(source, target, k_, minLength_, maxDepth_, listener, mapper);
+			algo.run(source, target, k_, minLength_, maxDepth_, mapper);
+			/*paths = algo.run2(source, target, k_, maxDepth);
+
+			for (org.neo4j.graphdb.Path path : paths) {
+				pathList.add(getPathAsMap( path));
+			}
+			Gson gson = new Gson();
+
+			String resJSON = gson.toJson(pathList, pathList.getClass());
+			System.out.println("hello");
+			System.out.println(pathList); */
 		}
 		if (runDijsktra) {
 			CostEvaluator<Double> costEvaluator = new EdgePropertyCostEvaluator(costFunction);
 			KShortestPathsAlgo algo = new KShortestPathsAlgo(expander, costEvaluator);
 
-			algo.run(source, target, k_, listener);
+			System.out.println(algo.run(source, target, k_, listener, maxDepth))	;
 		}
 	}
 

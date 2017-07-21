@@ -5,14 +5,6 @@
  *******************************************************************************/
 package org.caleydo.neo4j.plugins.kshortestpaths;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.PriorityQueue;
-import java.util.Set;
-
 import org.apache.commons.lang.time.StopWatch;
 import org.neo4j.graphalgo.CostEvaluator;
 import org.neo4j.graphalgo.GraphAlgoFactory;
@@ -25,6 +17,8 @@ import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Path;
 import org.neo4j.graphdb.Relationship;
+
+import java.util.*;
 
 /**
  * @author Christian
@@ -70,11 +64,11 @@ public class KShortestPathsAlgo {
 		this.shortestPathFinder = GraphAlgoFactory.dijkstra(expander, this.costEvaluator);
 		// System.out.println(expander);
 	}
-	public List<WeightedPath> run(Node sourceNode, Node targetNode, int k) {
-		return run(sourceNode, targetNode, k, null);
+	public List<WeightedPath> run(Node sourceNode, Node targetNode, int k, int depth) {
+		return run(sourceNode, targetNode, k, null, depth);
 	}
 
-	public List<WeightedPath> run(Node sourceNode, Node targetNode, int k, IPathReadyListener onPathReady) {
+	public List<WeightedPath> run(Node sourceNode, Node targetNode, int k, IPathReadyListener onPathReady, int depth) {
 		StopWatch w = new StopWatch();
 		w.start();
 
@@ -100,7 +94,7 @@ public class KShortestPathsAlgo {
 		}
 		paths.add(shortestPath);
 
-		pathCandidateHashes.add(generatePathHash(shortestPath));
+		pathCandidateHashes.add(generatePathHash(shortestPath, depth));
 
 		for (int i = 1; i < k; i++) {
 
@@ -159,11 +153,17 @@ public class KShortestPathsAlgo {
 				profile("Found next path", w);
 				if (spurPath != null && !Double.isInfinite(spurPath.weight())) {
 					WeightedPath pathCandidate = concatenate(rootPath, spurPath);
-					Integer pathHash = generatePathHash(pathCandidate);
-					if (!pathCandidateHashes.contains(pathHash)) {
-						pathCandidates.add(pathCandidate);
-						pathCandidateHashes.add(pathHash);
+
+					Integer pathHash = generatePathHash(pathCandidate, depth);
+
+					if (pathHash != null)
+					{
+						if (!pathCandidateHashes.contains(pathHash)) {
+							pathCandidates.add(pathCandidate);
+							pathCandidateHashes.add(pathHash);
+						}
 					}
+
 				}
 
 				// Restore edges
@@ -210,14 +210,19 @@ public class KShortestPathsAlgo {
 		return new WeightedPathImpl(originalCostEvaluator, pathBuilder.build());
 	}
 
-	private int generatePathHash(WeightedPath path) {
+	private int generatePathHash(WeightedPath path , int depth) {
 		List<Long> idList = new ArrayList<Long>((path.length() * 2) + 1);
-		for (Node n : path.nodes()) {
-			idList.add(n.getId());
-		}
-		for (Relationship r : path.relationships()) {
-			idList.add(r.getId());
-		}
+
+			if (path.length() <= depth)
+			{
+				for (Node n : path.nodes()) {
+					idList.add(n.getId());
+				}
+				for (Relationship r : path.relationships()) {
+					idList.add(r.getId());
+				}
+			}
+
 
 		return idList.hashCode();
 	}

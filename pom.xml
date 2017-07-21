@@ -118,5 +118,10 @@
 			<version>${neo4j}</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.neo4j</groupId>
+			<artifactId>neo4j-graphdb-api</artifactId>
+			<version>3.2.0</version>
+		</dependency>
 	</dependencies>
 </project>

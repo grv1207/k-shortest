@@ -1,36 +1,21 @@
 package org.caleydo.neo4j.plugins.kshortestpaths;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import org.caleydo.neo4j.plugins.kshortestpaths.constraints.DirectionContraints;
 import org.caleydo.neo4j.plugins.kshortestpaths.constraints.IPathConstraint;
 import org.caleydo.neo4j.plugins.kshortestpaths.constraints.InlineRelationships;
 import org.caleydo.neo4j.plugins.kshortestpaths.constraints.PathConstraints;
 import org.neo4j.graphalgo.CostEvaluator;
-import org.neo4j.graphalgo.WeightedPath;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Label;
-import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Path;
-import org.neo4j.graphdb.PropertyContainer;
-import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.*;
 import org.neo4j.helpers.collection.Iterables;
-import org.neo4j.server.plugins.Description;
-import org.neo4j.server.plugins.Parameter;
-import org.neo4j.server.plugins.PluginTarget;
-import org.neo4j.server.plugins.ServerPlugin;
-import org.neo4j.server.plugins.Source;
+import org.neo4j.server.plugins.*;
 import org.neo4j.server.rest.repr.Representation;
 import org.neo4j.server.rest.repr.ValueRepresentation;
 import org.parboiled.common.StringUtils;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
+import java.util.*;
+import java.util.function.Function;
 
 // START SNIPPET: ShortestPath
 public class KShortestPaths extends ServerPlugin {
@@ -39,9 +24,10 @@ public class KShortestPaths extends ServerPlugin {
 	@PluginTarget(GraphDatabaseService.class)
 	public Representation kShortestPaths(
 			@Source GraphDatabaseService graphDb,
-			@Description("Source node of the path") @Parameter(name = "source") Node source,
-			@Description("Target node of the path") @Parameter(name = "target") Node target,
+			@Description("Source node of the path") @Parameter(name = "source") String src,
+			@Description("Target node of the path") @Parameter(name = "target") String trgt,
 			@Description("The max number of paths to retrieve") @Parameter(name = "k") Integer k,
+			@Description("The max depth for a paths to retrieve") @Parameter(name = "l", optional = true) Integer l,
 			@Description("Javascript cost function to determine the cost of an edge") @Parameter(name = "costFunction", optional = true) String costFunction,
 			// @Description("Cost for an edge (>0)") @Parameter(name = "baseCost", optional = true) Double baseCost,
 			// @Description("Map of property costs (property name : cost)") @Parameter(name = "propertyCosts", optional
@@ -56,15 +42,46 @@ public class KShortestPaths extends ServerPlugin {
 
 		CostEvaluator<Double> costEvaluator = new EdgePropertyCostEvaluator(costFunction);
 
-		KShortestPathsAlgo algo = new KShortestPathsAlgo(expander, costEvaluator);
 
-		List<WeightedPath> paths = algo.run(db.inject(source), db.inject(target), k);
 
-		List<Map<String, Object>> pathList = new ArrayList<Map<String, Object>>(paths.size());
+		//List<WeightedPath> paths = algo.run(db.inject(source), db.inject(target), k);
 
-		for (WeightedPath path : paths) {
-			pathList.add(getPathAsMap(path));
+        //Transaction tx = graphDb.beginTx();
+        Label conceptlabel = Label.label("concept");
+        Node source =  db.findNode(conceptlabel, "name",src);//"C0000052");
+        Node target = db.findNode(conceptlabel, "name",trgt);//"C0000176");
+
+
+		KShortestPathsAlgo2 algo = new KShortestPathsAlgo2(expander, expander,false);
+		Function<org.neo4j.graphdb.Path, org.neo4j.graphdb.Path> mapper = toMapper();
+
+		//KShortestPathsAlgo algo = new KShortestPathsAlgo(expander, costEvaluator);
+
+		List<Path> paths;
+		if(l == null)
+		{
+			 paths = algo.run2(db.inject(source), db.inject(target), k,5);
 		}
+		else
+		{
+			paths = algo.run2(db.inject(source), db.inject(target), k,l);
+		}
+
+
+
+		List<Map<String, Object>> pathList = new ArrayList<Map<String, Object>>(k);
+
+		for (Path path : paths) {
+
+			if(pathList.size() <= k)
+			{
+				pathList.add(getPathAsMap( path));
+			}
+			else
+				break;
+		}
+
+
 
 		tx.success();
 		tx.close();
@@ -74,7 +91,14 @@ public class KShortestPaths extends ServerPlugin {
 		String resJSON = gson.toJson(pathList, pathList.getClass());
 		return ValueRepresentation.string(resJSON);
 	}
-
+	 static Function<org.neo4j.graphdb.Path, org.neo4j.graphdb.Path> toMapper() {
+		return new Function<org.neo4j.graphdb.Path, org.neo4j.graphdb.Path>() {
+			@Override
+			public org.neo4j.graphdb.Path apply(org.neo4j.graphdb.Path from) {
+				return KShortestPaths.slice(from, 1,-2);
+			}
+		};
+	}
 
 	static CustomPathExpander toExpander(String constraints, FakeGraphDatabase db, Iterable<FakeNode> extraNodes) {
 		return toExpander(toMap(constraints), db, extraNodes);
@@ -124,13 +148,13 @@ public class KShortestPaths extends ServerPlugin {
 
 		return toMap(path, p);
 	}
-
+     /*
 	static  Map<String, Object> getPathAsMap(WeightedPath path) {
 		Map<String, Object> p = new HashMap<>();
 		p.put("weight", path.weight());
 
 		return toMap(path, p);
-	}
+	} */
 
 
 	public static Map<String, Object> toMap(Path path, Map<String, Object> p) {
